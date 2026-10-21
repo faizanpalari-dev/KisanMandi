@@ -4,30 +4,38 @@ import android.app.DatePickerDialog
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.util.Calendar
 import java.util.Locale
 
-// ---------- Milestone 4: Marketplace (active listings) ----------
+// ---------- Milestone 4: Marketplace (active listings, product grid) ----------
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,46 +61,64 @@ fun MarketplaceScreen(vm: AppViewModel, nav: Nav) {
             )
         }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        OutlinedTextField(
-            value = query, onValueChange = { query = it },
-            label = { Text("Search crop") },
-            leadingIcon = { Icon(Icons.Default.Search, null) },
-            singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Picker(
-                "Crop", listOf("All" to "All") + vm.crops.map { it.id to it.name }, crop,
-                { crop = it }, Modifier.weight(1f)
-            )
-            Picker(
-                "District", listOf("All" to "All") + districts.map { it to it }, district,
-                { district = it }, Modifier.weight(1f)
+    Column(Modifier.fillMaxSize()) {
+        OrangeHeader {
+            SearchBar(query, { query = it }, "Search wheat, mango, onion...")
+            Text(
+                "🧺 ${shown.size} fresh listings from Sindh farmers",
+                color = Color.White, style = MaterialTheme.typography.labelMedium
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Picker(
-                "Grade", listOf("All", "A", "B", "C").map { it to it }, grade,
-                { grade = it }, Modifier.weight(1f)
-            )
-            Picker(
-                "Sort", listOf("newest" to "Newest", "price" to "Price low-high"), sort,
-                { sort = it }, Modifier.weight(1f)
-            )
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item {
+                ChipPicker(
+                    "Crop", listOf("All" to "All crops") + vm.crops.map { it.id to it.name },
+                    crop, { crop = it }
+                )
+            }
+            item {
+                ChipPicker(
+                    "District", listOf("All" to "All districts") + districts.map { it to it },
+                    district, { district = it }
+                )
+            }
+            item {
+                ChipPicker(
+                    "Grade",
+                    listOf("All" to "All grades", "A" to "Grade A", "B" to "Grade B", "C" to "Grade C"),
+                    grade, { grade = it }
+                )
+            }
+            item {
+                ChipPicker(
+                    "Sort: Newest",
+                    listOf("newest" to "Newest first", "price" to "Price: Low to High"),
+                    sort, { sort = it }, allKey = "newest"
+                )
+            }
         }
+
         PullToRefreshBox(
             isRefreshing = vm.loading,
             onRefresh = { vm.refresh() },
             modifier = Modifier.fillMaxSize()
         ) {
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 8.dp)
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (shown.isEmpty()) item { Text("No listings match your filters.") }
+                if (shown.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) { EmptyState("🧺", "No listings match your filters") }
+                }
                 items(shown, key = { it.id ?: "" }) { l ->
-                    ListingCard(vm, l) { nav.push(Screen.ListingDetail(l.id!!)) }
+                    ProductCard(vm, l) { nav.push(Screen.ListingDetail(l.id!!)) }
                 }
             }
         }
@@ -107,20 +133,35 @@ fun MyListingsScreen(vm: AppViewModel, nav: Nav) {
     val mine = vm.listings
         .filter { it.user_id == vm.user?.id }
         .sortedByDescending { it.created_at ?: "" }
+    val active = mine.count { it.status == "Active" }
+    val sold = mine.size - active
 
     PullToRefreshBox(
         isRefreshing = vm.loading,
         onRefresh = { vm.refresh() },
         modifier = Modifier.fillMaxSize()
     ) {
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 88.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 96.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            if (mine.isEmpty()) item { Text("You have no listings yet. Tap + to add one.") }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    StatBox("Total", "${mine.size}", Orange, Modifier.weight(1f))
+                    StatBox("Active", "$active", Green, Modifier.weight(1f))
+                    StatBox("Sold", "$sold", TextGray, Modifier.weight(1f))
+                }
+            }
+            if (mine.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    EmptyState("🌱", "No listings yet. Tap Sell crop to add one.")
+                }
+            }
             items(mine, key = { it.id ?: "" }) { l ->
-                ListingCard(vm, l) { nav.push(Screen.ListingDetail(l.id!!)) }
+                ProductCard(vm, l) { nav.push(Screen.ListingDetail(l.id!!)) }
             }
         }
     }
@@ -134,93 +175,180 @@ fun ListingDetailScreen(vm: AppViewModel, nav: Nav, id: String) {
     val ctx = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
 
-    Scaffold(topBar = { BackBar("Listing details", nav.back) }) { pad ->
-        if (l == null) {
-            Box(Modifier.padding(pad).padding(16.dp)) { Text("This listing no longer exists.") }
-            return@Scaffold
+    if (l == null) {
+        Scaffold(topBar = { BackBar("Product details", nav.back) }, containerColor = BgGray) { pad ->
+            Box(Modifier.padding(pad).padding(16.dp)) { EmptyState("🗑️", "This listing no longer exists.") }
         }
-        val seller = vm.users.find { it.id == l.user_id }
-        val phone = l.phone ?: seller?.phone ?: ""
-        val avg = vm.avgMarket(l.crop_id)
-        val isOwner = l.user_id == vm.user?.id
+        return
+    }
 
-        fun open(uri: String, action: String) {
-            try {
-                ctx.startActivity(Intent(action, Uri.parse(uri)))
-            } catch (e: Exception) {
-                Toast.makeText(ctx, "No app found to open this", Toast.LENGTH_SHORT).show()
+    val crop = vm.crops.find { it.id == l.crop_id }
+    val name = crop?.name ?: "Unknown"
+    val seller = vm.users.find { it.id == l.user_id }
+    val phone = l.phone ?: seller?.phone ?: ""
+    val avg = vm.avgMarket(l.crop_id)
+    val isOwner = l.user_id == vm.user?.id
+
+    fun open(uri: String, action: String) {
+        try {
+            ctx.startActivity(Intent(action, Uri.parse(uri)))
+        } catch (e: Exception) {
+            Toast.makeText(ctx, "No app found to open this", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun whatsapp() {
+        val digits = phone.filter { it.isDigit() }
+        val intl = if (digits.startsWith("0")) "92" + digits.drop(1) else digits
+        val msg = Uri.encode("Assalam o Alaikum, I am interested in your $name on KisanMandi.")
+        open("https://wa.me/$intl?text=$msg", Intent.ACTION_VIEW)
+    }
+
+    Scaffold(
+        topBar = { BackBar("Product details", nav.back) },
+        containerColor = BgGray,
+        bottomBar = {
+            Surface(color = Color.White, shadowElevation = 8.dp) {
+                Row(
+                    Modifier.navigationBarsPadding().padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { open("tel:$phone", Intent.ACTION_DIAL) },
+                        modifier = Modifier.weight(1f).height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.5.dp, Orange),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange)
+                    ) {
+                        Icon(Icons.Default.Call, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Call", fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = { whatsapp() },
+                        modifier = Modifier.weight(1f).height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen, contentColor = Color.White)
+                    ) { Text("💬 WhatsApp", fontWeight = FontWeight.Bold) }
+                }
             }
         }
-
+    ) { pad ->
         Column(
-            Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    vm.cropName(l.crop_id), style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
-                )
-                Tag(l.status, if (l.status == "Active") Green else Color.Gray)
+            // Big "product image"
+            Box(
+                Modifier.fillMaxWidth().height(220.dp).background(categoryColor(crop?.category ?: "")),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(cropEmoji(name), fontSize = 110.sp)
+                if (l.status != "Active") {
+                    Box(
+                        Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.45f)),
+                        contentAlignment = Alignment.Center
+                    ) { Text("SOLD", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 32.sp) }
+                }
             }
-            MarketLabel(vm.marketLabel(l))
 
-            Card(Modifier.fillMaxWidth()) {
+            WhiteCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    InfoRow("Asking price", rs(l.asking_price))
-                    InfoRow("Avg market price", avg?.let { rs(it) } ?: "-")
+                    Text(
+                        rs(l.asking_price), color = Orange, fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Tag("Grade ${l.grade}", Orange, filled = true)
+                        MarketLabel(vm.marketLabel(l))
+                        Tag(l.status, if (l.status == "Active") Green else TextGray)
+                    }
+                    avg?.let {
+                        Text(
+                            "Average mandi price today: ${rs(it)}",
+                            style = MaterialTheme.typography.bodySmall, color = TextGray
+                        )
+                    }
+                }
+            }
+
+            WhiteCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    SectionTitle("Product details")
+                    Spacer(Modifier.height(6.dp))
                     InfoRow("Quantity", fmt(l.quantity))
                     InfoRow("Grade", l.grade)
                     InfoRow("District", l.district)
                     InfoRow("Available from", l.available_from)
-                    InfoRow("Seller", seller?.name ?: "-")
-                    InfoRow("Phone", phone)
+                    InfoRow("Category", crop?.category ?: "-")
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { open("tel:$phone", Intent.ACTION_DIAL) }, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Call, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Call")
+            WhiteCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(46.dp).clip(CircleShape).background(Orange),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            (seller?.name ?: "?").take(1).uppercase(),
+                            color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(seller?.name ?: "Seller", fontWeight = FontWeight.Bold)
+                        Text("📞 $phone", style = MaterialTheme.typography.bodySmall, color = TextGray)
+                        Text("📍 ${seller?.district ?: l.district}", style = MaterialTheme.typography.bodySmall, color = TextGray)
+                    }
+                    Tag("Seller", Blue)
                 }
-                OutlinedButton(
-                    onClick = {
-                        val digits = phone.filter { it.isDigit() }
-                        val intl = if (digits.startsWith("0")) "92" + digits.drop(1) else digits
-                        val msg = Uri.encode("Assalam o Alaikum, I am interested in your ${vm.cropName(l.crop_id)} on KisanMandi.")
-                        open("https://wa.me/$intl?text=$msg", Intent.ACTION_VIEW)
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("WhatsApp") }
             }
 
             // Ownership safeguard: only the owner sees these buttons
             if (isOwner) {
-                HorizontalDivider()
-                Text("Manage your listing", fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { nav.push(Screen.ListingForm(l.id)) }) { Text("Edit") }
-                    if (l.status == "Active") {
-                        Button(onClick = { vm.markSold(l) }) { Text("Mark Sold") }
-                    }
-                    OutlinedButton(onClick = { confirmDelete = true }) {
-                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                WhiteCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SectionTitle("Manage your listing")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { nav.push(Screen.ListingForm(l.id)) },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Edit") }
+                            if (l.status == "Active") {
+                                Button(
+                                    onClick = { vm.markSold(l) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Mark Sold") }
+                            }
+                            OutlinedButton(
+                                onClick = { confirmDelete = true },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Red),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Red),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Delete") }
+                        }
                     }
                 }
             }
+            Spacer(Modifier.height(8.dp))
         }
 
         if (confirmDelete) {
             AlertDialog(
                 onDismissRequest = { confirmDelete = false },
+                containerColor = Color.White,
                 title = { Text("Delete listing?") },
                 text = { Text("This cannot be undone.") },
                 confirmButton = {
                     TextButton(onClick = {
                         confirmDelete = false
                         vm.deleteListing(l) { nav.back() }
-                    }) { Text("Delete") }
+                    }) { Text("Delete", color = Red) }
                 },
                 dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
             )
@@ -245,9 +373,12 @@ fun ListingFormScreen(vm: AppViewModel, nav: Nav, id: String?) {
     var errors by remember { mutableStateOf(mapOf<String, String>()) }
     var saving by remember { mutableStateOf(false) }
 
-    Scaffold(topBar = { BackBar(if (existing == null) "New listing" else "Edit listing", nav.back) }) { pad ->
+    Scaffold(
+        topBar = { BackBar(if (existing == null) "Sell your crop" else "Edit listing", nav.back) },
+        containerColor = BgGray
+    ) { pad ->
         if (existing != null && existing.user_id != vm.user?.id) {
-            Box(Modifier.padding(pad).padding(16.dp)) { Text("You can only edit your own listings.") }
+            Box(Modifier.padding(pad).padding(16.dp)) { EmptyState("🔒", "You can only edit your own listings.") }
             return@Scaffold
         }
 
@@ -274,41 +405,61 @@ fun ListingFormScreen(vm: AppViewModel, nav: Nav, id: String?) {
         }
 
         Column(
-            Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            Modifier.padding(pad).padding(12.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Picker("Crop", vm.crops.map { it.id to it.name }, cropId, { cropId = it }, Modifier.fillMaxWidth())
-            ErrorText(errors["crop"])
-
-            Field(qty, { qty = it }, "Quantity", errors["qty"], KeyboardType.Number)
-            Field(price, { price = it }, "Asking price (Rs)", errors["price"], KeyboardType.Number)
-            cropId?.let { c ->
-                vm.avgMarket(c)?.let {
-                    Text("Avg market price today: ${rs(it)}", style = MaterialTheme.typography.bodySmall)
+            WhiteCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionTitle("🌾 What are you selling?")
+                    Picker("Crop", vm.crops.map { it.id to "${cropEmoji(it.name)}  ${it.name}" }, cropId, { cropId = it }, Modifier.fillMaxWidth())
+                    ErrorText(errors["crop"])
+                    Text("Quality grade", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("A", "B", "C").forEach { g -> OrangeChip("Grade $g", grade == g) { grade = g } }
+                    }
+                    ErrorText(errors["grade"])
                 }
             }
 
-            Picker("District", SINDH_DISTRICTS.map { it to it }, district, { district = it }, Modifier.fillMaxWidth())
-            ErrorText(errors["district"])
-
-            Text("Grade")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("A", "B", "C").forEach { g ->
-                    FilterChip(selected = grade == g, onClick = { grade = g }, label = { Text("Grade $g") })
+            WhiteCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SectionTitle("💰 Quantity & price")
+                    Field(qty, { qty = it }, "Quantity", errors["qty"], KeyboardType.Number)
+                    Field(price, { price = it }, "Asking price (Rs)", errors["price"], KeyboardType.Number)
+                    cropId?.let { c ->
+                        vm.avgMarket(c)?.let {
+                            Surface(color = OrangeLight, shape = RoundedCornerShape(10.dp)) {
+                                Text(
+                                    "💡 Average mandi price today: ${rs(it)}",
+                                    color = OrangeDark, style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
-            ErrorText(errors["grade"])
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Field(date, { date = it }, "Available from (YYYY-MM-DD)", errors["date"], modifier = Modifier.weight(1f))
-                IconButton(onClick = { pickDate() }) { Icon(Icons.Default.DateRange, "Pick date") }
+            WhiteCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SectionTitle("📍 Location & availability")
+                    Picker("District", SINDH_DISTRICTS.map { it to it }, district, { district = it }, Modifier.fillMaxWidth())
+                    ErrorText(errors["district"])
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Field(date, { date = it }, "Available from (YYYY-MM-DD)", errors["date"], modifier = Modifier.weight(1f))
+                        IconButton(onClick = { pickDate() }) { Icon(Icons.Default.DateRange, "Pick date", tint = Orange) }
+                    }
+                    Field(phone, { phone = it }, "Contact phone", errors["phone"], KeyboardType.Phone)
+                }
             }
 
-            Field(phone, { phone = it }, "Contact phone", errors["phone"], KeyboardType.Phone)
+            ErrorText(vm.error)
 
             Button(
                 enabled = !saving,
-                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(54.dp),
                 onClick = {
                     errors = validate()
                     if (errors.isEmpty()) {
@@ -332,8 +483,13 @@ fun ListingFormScreen(vm: AppViewModel, nav: Nav, id: String?) {
                         )
                     }
                 }
-            ) { Text(if (saving) "Saving..." else "Save listing") }
-            ErrorText(vm.error)
+            ) {
+                Text(
+                    if (saving) "Saving..." else if (existing == null) "Post listing" else "Save changes",
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
