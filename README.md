@@ -133,5 +133,5 @@ Check it at `http://localhost:3000/crops`.
 
 | Name | Role |
 |---|---|
-| Your Name | Android Developer |
-| Teammate Name | Role |
+| Faizan Palari | Android Developer |
+| Abdul Aziz | Control Json File|
